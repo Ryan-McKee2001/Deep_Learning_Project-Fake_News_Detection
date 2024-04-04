@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 import seaborn as sns
 import os
+from tensorflow.keras.layers import Embedding
 
 
 # Disable GPU: Issues currently with GPU memory growth
@@ -65,28 +66,17 @@ def preprocess_data(X_train, X_test, preprocess=True):
     X_train = pad_sequences(X_train, maxlen=max_len)
     X_test = pad_sequences(X_test, maxlen=max_len)
 
-    return X_train, X_test, tokenizer.word_index
+    return X_train, X_test, tokenizer
 
-def embed_text_glove(token_sequences, word_index, glove):
-    embedded_text = []
-    for sequence in token_sequences:
-        embedded_sentence = []
-        for word_idx in sequence:  # Rename the loop variable to word_idx
-            try:
-                if (word_idx == 0):
-                    embedded_sentence.append(np.zeros(300))
-                    continue
-                word = next(word for word, index in word_index.items() if index == word_idx)  # Rename word_index to word_idx
-                embedded_word = glove[word]
-                embedded_sentence.append(embedded_word)
-            except KeyError:
-                embedded_sentence.append(np.zeros(300))
-        embedded_text.append(embedded_sentence)
-    return np.array(embedded_text)
-
-def train_model(X_train, y_train, batch_size, epochs, n_folds, model_params):
+def train_model(X_train, y_train, batch_size, epochs, n_folds, model_params, tokenizer):
     # Flatten the embedded dimensions
-    X_train = X_train.reshape(X_train.shape[0], -1)
+
+    vocab_size = len(tokenizer.word_index) + 1
+    word_index = tokenizer.word_index
+    embedding_matrix = create_embedding_matrix(tokenizer, glove, vocab_size)
+
+    model_params['hl1']['input_shape'] = vocab_size
+
     kf = KFold(n_splits=n_folds, shuffle=True)
     total_training_time = 0 
     all_training_accuracies, all_validation_accuracies = [], []
@@ -104,6 +94,7 @@ def train_model(X_train, y_train, batch_size, epochs, n_folds, model_params):
         initial_validation_loss, initial_validation_accuracy = evaluate_model(X_val_fold, y_val_fold, model_params)
 
         mlp = Sequential()
+        mlp.add(Embedding(input_dim=vocab_size, output_dim=300, input_length=X_train.shape[1], trainable=False, weights=))
         mlp.add(Dense(**model_params['hl1'])) # hidden layer
         mlp.add(Dense(**model_params['output'])) 
 
@@ -123,6 +114,13 @@ def train_model(X_train, y_train, batch_size, epochs, n_folds, model_params):
     print(f"Average training time: {total_training_time / n_folds:.2f} seconds")
     average_training_time = total_training_time / n_folds
     return mlp, np.array(all_training_accuracies), np.array(all_validation_accuracies), np.array(all_training_losses), np.array(all_validation_losses), average_training_time
+
+def create_embedding_matrix(tokenizer, glove, num_words):
+    embedding_matrix = np.zeros((num_words, 300))
+    for word, i in tokenizer.word_index.items():
+        if word in glove.key_to_index:
+            embedding_vector = glove[word]
+            embedding_matrix[i] = embedding_vector
 
 def evaluate_model(X, y, model_params):
     model = Sequential()
@@ -170,16 +168,12 @@ def test_model_and_get_metrics(mlp, X_test, y_test):
 
 def test_model_configurations(X_train, y_train, X_test, y_test, preprocess, model_params, batch_size, epochs, n_folds):
     
-    X_train, X_test, word_index = preprocess_data(X_train, X_test, preprocess)
+    X_train, X_test, tokenizer = preprocess_data(X_train, X_test, preprocess)
 
-    # embed model with glove
-    X_train_glove_embedded = embed_text_glove(X_train, word_index, glove)
-    X_test_glove_embedded = embed_text_glove(X_test, word_index, glove)
-
-    model_params['hl1']['input_shape'] = (X_train_glove_embedded.shape[1] * 300,)
+    # model_params['hl1']['input_shape'] = (X_train.shape[1] * 300,)
 
     mlp, training_accuracies, validation_accuracies, training_losses, validation_losses, total_training_time = train_model(
-        X_train_glove_embedded, y_train, batch_size=batch_size, epochs=epochs, n_folds=n_folds, model_params=model_params)
+        X_train, y_train, batch_size=batch_size, epochs=epochs, n_folds=n_folds, model_params=model_params, tokenizer=tokenizer)
 
     plot_title = 'MLP Using Flattened Glove Embeddings \nTraining And Validation Metrics'
     train_metrics_list = [training_losses.mean(axis=0), training_accuracies.mean(axis=0)]
@@ -213,6 +207,14 @@ def test_model_configurations(X_train, y_train, X_test, y_test, preprocess, mode
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     metrics_df.to_csv(file_path, index=False)
     print("Metrics have been saved to 'testing_metrics.csv'")
+
+def create_embedding_matrix(tokenizer, glove, num_words):
+    # Construct the model weight matrix for embedding layer
+    embedding_matrix = np.zeros((num_words, 300))
+    for word, i in tokenizer.word_index.items():
+        if word in glove.key_to_index:
+            embedding_vector = glove[word]
+            embedding_matrix[i] = embedding_vector
 
 
 
