@@ -71,6 +71,6 @@ This project demonstrates the potential of using deep learning models for fake n
 
 ## Acknowledgements
 
-This project was completed as part of the CSC3066 Deep Learning course at the University, under the guidance of Professor [Name]. Special thanks to the creators of the GloVe word embeddings and the Keras library for their valuable tools and resources.
+This project was completed as part of the CSC3066 Deep Learning course at Queens University Belfast.
 
-For further details, refer to the project report included in the repository.
+For further details, refer to the project report and Jupyter notebooks included in the repository.
